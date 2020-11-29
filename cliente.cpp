@@ -58,18 +58,63 @@ void mostrarMatriz(char (&array)[rows][cols])
 	}
 }
 
+/**Verifica que el string es un numero válido:
+ * 	-Es un numero positivo
+ * 	-Dentro del rango de casillas
+ * Devuelve el numero y -1 si no es valido
+*/
+int esNumeroValido(string input)
+{
+	char *endp;
+	int num = strtol(input.c_str(), &endp, 10);
+	if (*endp != '\0')
+	{
+		cout << "No es un número válido.";
+		num = -1;
+	}
+	else if (num >= FILA_COL || num < 0)
+	{
+		cout << "El número ingresado no pertenece a un rango válido [0-" << FILA_COL - 1 << "]" <<endl;
+		num = -1;
+	}
+	return num;
+}
+
+int ingresarNumero()
+{
+	string input;
+	int num;
+	cin >> input;
+	while ((num = esNumeroValido(input)) == -1)
+	{
+		cout << " Intente una vez más: " ;
+		cin >> input;
+	}
+	return num;
+}
+
+bool esUbicacionCasillaValida(int f, int c){
+	return tServidor->tablero[f][c] == '-';
+}
+
 void ingresarPorTeclado()
 {
-	string fila, colum;
-	cout << "Fila: ";
-	cin >> fila;
-	cout << "Columna: ";
-	cin >> colum;
+	int fila, colum;
+		cout << "Fila: ";
+		fila = ingresarNumero();
+		cout << "Columna: ";
+		colum = ingresarNumero();
 
-	struct turnoCliente t;
-	t.fila = atoi(fila.c_str());
-	t.colum = atoi(colum.c_str());
-	memcpy(tc, &t, sizeof(struct turnoCliente));
+	while(!esUbicacionCasillaValida(fila, colum))
+	{
+		cout << "La ubicación especificada ya tiene un valor." << endl;
+		cout << "Fila: ";
+		fila = ingresarNumero();
+		cout << "Columna: ";
+		colum = ingresarNumero();
+	}
+	tc->fila = fila;
+	tc->colum = colum;
 	system("clear");
 }
 
@@ -146,7 +191,8 @@ void killServidor()
 	kill(*pidServidorMC, SIGUSR1); //envía una señal SIGUSR1 a ese proceso
 }
 
-void checkServidorOcupado(){
+void checkServidorOcupado()
+{
 	int fd = shm_open(NOMBRE_MATRIZ_COMP, O_CREAT | O_EXCL, 0600);
 	if (fd == -1)
 	{
@@ -200,7 +246,7 @@ int main()
 	} while (tServidor->paresRestantes != 0);
 
 	system("clear");
-	cout << "Juego finalizado!" << endl;
+	cout << "*************Juego finalizado!************" << endl;
 	mostrarTablero();
 	killServidor();
 }
