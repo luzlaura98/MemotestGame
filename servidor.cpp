@@ -25,14 +25,6 @@
 #define SEM_TABLERO_LISTO "tableroListo"
 #define PID_SERVIDOR "pidServidor"
 
-/**
- * Falta:
- * [ ]validar que sean números el ingreso de fila y colum del cliente y esté entre [0,CANT_CASILLAS]
- * [ ]controlar que si elije una casilla que ya está destapada pida de nuevo el numero
- * [ ]opcional para que quede más ordenado: header.h para las defines y structs
- * 
-*/
-
 using namespace std;
 
 struct turnoServidor
