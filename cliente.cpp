@@ -1,7 +1,6 @@
 #include <iostream>
 #include <stdlib.h>
 #include <stdio.h>
-#include <thread>
 #include <mutex>
 #include <semaphore.h>
 #include <unistd.h>
@@ -11,6 +10,7 @@
 #include <sys/mman.h>
 #include <list>
 #include <cstring> //memset
+#include <signal.h>
 
 #define FILA_COL 4
 #define TAM_TIEMPO 20
@@ -18,10 +18,10 @@
 
 #define NOMBRE_MATRIZ_COMP "miMatriz"
 #define NOMBRE_JUGADA "turnoCliente"
-#define NOMBRE_ESTADO_PARTIDA "estadoPartida"
 #define SEM_LLEGA_CLIENTE "llegaCliente"
 #define SEM_NUEVA_JUGADA "nuevaJUgada"
 #define SEM_TABLERO_LISTO "tableroListo"
+#define PID_SERVIDOR "pidServidor"
 
 using namespace std;
 
@@ -41,8 +41,9 @@ struct turnoCliente
 
 sem_t *tableroListo;
 sem_t *nuevaJugada;
-bool juegoTerminado = false;
+
 struct turnoServidor *tServidor;
+struct turnoCliente *tc;
 
 template <size_t rows, size_t cols>
 void mostrarMatriz(char (&array)[rows][cols])
@@ -57,65 +58,6 @@ void mostrarMatriz(char (&array)[rows][cols])
 	}
 }
 
-void mostrarTablero()
-{
-	struct turnoServidor *rptr;
-	int fd;
-
-	/*fileDescriptor*/ fd = shm_open(NOMBRE_MATRIZ_COMP, O_CREAT | O_RDWR, 0600); //0600
-	if (fd == -1)
-	{
-		cout << "shm_open error" << endl;
-		exit(EXIT_FAILURE);
-	}
-	if (ftruncate(fd, sizeof(struct turnoServidor)) == -1)
-	{
-		cout << "ftruncate error" << endl;
-		exit(EXIT_FAILURE);
-	}
-	rptr = (struct turnoServidor *)mmap(NULL, sizeof(struct turnoServidor),
-										PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-	if (rptr == MAP_FAILED)
-	{
-		cout << "mmap error" << endl;
-		exit(EXIT_FAILURE);
-	}
-
-	close(fd);
-	cout << "Turno #" << rptr->nro << "  Tiempo: " << rptr->tiempo << "s  Pares restantes: " << rptr->paresRestantes << endl;
-	cout << endl;
-	mostrarMatriz(rptr->tablero);
-
-	tServidor = rptr;
-}
-
-struct turnoCliente *cargarTurnoClienteComp()
-{
-	/*fileDescriptor*/ int fd = shm_open(NOMBRE_JUGADA, O_CREAT | O_RDWR, 0600); //0600
-	if (fd == -1)
-	{
-		cout << "shm_open error" << endl;
-		exit(EXIT_FAILURE);
-	}
-
-	if (ftruncate(fd, sizeof(struct turnoCliente)) == -1)
-	{
-		cout << "ftruncate error" << endl;
-		exit(EXIT_FAILURE);
-	}
-	struct turnoCliente *tc = (struct turnoCliente *)mmap(NULL, sizeof(struct turnoCliente),
-														  PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
-	if (tc == MAP_FAILED)
-	{
-		cout << "mmap error" << endl;
-		exit(EXIT_FAILURE);
-	}
-
-	close(fd);
-	return tc;
-}
-
 void ingresarPorTeclado()
 {
 	string fila, colum;
@@ -127,21 +69,107 @@ void ingresarPorTeclado()
 	struct turnoCliente t;
 	t.fila = atoi(fila.c_str());
 	t.colum = atoi(colum.c_str());
-	memcpy(cargarTurnoClienteComp(), &t, sizeof(struct turnoCliente));
+	memcpy(tc, &t, sizeof(struct turnoCliente));
 	system("clear");
+}
+
+void mostrarTablero()
+{
+	cout << "Turno #" << tServidor->nro << "  Tiempo: " << tServidor->tiempo << "s  Pares restantes: " << tServidor->paresRestantes << endl;
+	cout << endl;
+	mostrarMatriz(tServidor->tablero);
+}
+
+void cargarTablero()
+{
+	int fd = shm_open(NOMBRE_MATRIZ_COMP, O_CREAT | O_RDWR, 0600); //0600
+	if (fd == -1)
+	{
+		cout << "shm_open error" << endl;
+		exit(EXIT_FAILURE);
+	}
+	if (ftruncate(fd, sizeof(struct turnoServidor)) == -1)
+	{
+		cout << "ftruncate error" << endl;
+		exit(EXIT_FAILURE);
+	}
+	tServidor = (struct turnoServidor *)mmap(NULL, sizeof(struct turnoServidor),
+											 PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (tServidor == MAP_FAILED)
+	{
+		cout << "mmap error" << endl;
+		exit(EXIT_FAILURE);
+	}
+	close(fd);
+}
+
+void cargarTurnoClienteComp()
+{
+	int fd = shm_open(NOMBRE_JUGADA, O_CREAT | O_RDWR, 0600); //0600
+	if (fd == -1)
+	{
+		cout << "shm_open error" << endl;
+		exit(EXIT_FAILURE);
+	}
+	if (ftruncate(fd, sizeof(struct turnoCliente)) == -1)
+	{
+		cout << "ftruncate error" << endl;
+		exit(EXIT_FAILURE);
+	}
+	tc = (struct turnoCliente *)mmap(NULL, sizeof(struct turnoCliente),
+									 PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	if (tc == MAP_FAILED)
+	{
+		cout << "mmap error" << endl;
+		exit(EXIT_FAILURE);
+	}
+	close(fd);
+}
+
+void recibirSignal(int signum)
+{
+	cout << "SIGINT recibido, pero ignorado :(" << endl;
+}
+
+void killServidor()
+{
+	int fd = shm_open(PID_SERVIDOR, O_RDONLY, 0600);
+	if (fd == -1)
+	{
+		cout << "Error" << endl;
+		exit(EXIT_FAILURE);
+	}
+	ftruncate(fd, sizeof(pid_t));
+	pid_t *pidServidorMC = (pid_t *)mmap(NULL, sizeof(pid_t), PROT_READ, MAP_SHARED, fd, 0);
+	close(fd);
+	kill(*pidServidorMC, SIGUSR1); //envía una señal SIGUSR1 a ese proceso
+}
+
+void checkServidorOcupado(){
+	int fd = shm_open(NOMBRE_MATRIZ_COMP, O_CREAT | O_EXCL, 0600);
+	if (fd == -1)
+	{
+		cout << "Ups, servidor ocupado con otro cliente." << endl;
+		exit(EXIT_FAILURE);
+	}
+	close(fd);
 }
 
 int main()
 {
+	signal(SIGINT, recibirSignal);
+	checkServidorOcupado();
 	sem_t *llegaCliente = sem_open(SEM_LLEGA_CLIENTE, O_CREAT, 0600, 0);
-	sem_post(llegaCliente); //V(llegaCliente)
+	sem_post(llegaCliente);
 	sem_close(llegaCliente);
-
 	tableroListo = sem_open(SEM_TABLERO_LISTO, O_CREAT, 0600, 0);
 	nuevaJugada = sem_open(SEM_NUEVA_JUGADA, O_CREAT, 0600, 0);
+	cargarTablero();
+	cargarTurnoClienteComp();
 
+	cout << "Esperando para comenzar!" << endl;
 	sem_wait(tableroListo);
-
 	do
 	{
 		system("clear");
@@ -174,6 +202,5 @@ int main()
 	system("clear");
 	cout << "Juego finalizado!" << endl;
 	mostrarTablero();
-	sem_close(nuevaJugada);
-	sem_close(tableroListo);
+	killServidor();
 }
